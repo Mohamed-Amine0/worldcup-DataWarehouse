@@ -1,3 +1,7 @@
+# DEMO
+
+![alt text](image.png)
+
 # World Cup Data Warehouse
 
 Projet de mise en place d'un Data Warehouse pour analyser les données historiques des Coupes du Monde de la FIFA et le calendrier 2026.
