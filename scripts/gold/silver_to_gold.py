@@ -2,7 +2,7 @@ import os
 import sys
 from datetime import datetime
 
-from pyspark.sql.functions import avg, col, count, create_map, lit, max, sum, when
+from pyspark.sql.functions import avg, col, count, create_map, lit, max, sum, when, pow, exp, round
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -18,6 +18,7 @@ TEAM_ALIASES = {
     "Türkiye": "Turkey",
     "Korea Republic": "Korea Republic",
     "IR Iran": "Iran",
+    "South Korea": "Korea Republic",
 }
 
 
@@ -124,47 +125,94 @@ def build_tournament_stats(matches):
     )
 
 
-def build_predictions_2026(schedule_2026, fifa_rankings):
+def build_predictions_2026(schedule_2026, fifa_rankings, elo_ratings):
+    from pyspark.sql import Window
+    from pyspark.sql.functions import row_number, desc, pow, exp, round
+
+    # 1. Normalize schedule team names
     schedule_norm = schedule_2026.withColumn(
         "home_team_norm", normalize_team(col("home_team"))
     ).withColumn("away_team_norm", normalize_team(col("away_team")))
 
-    fifa_2026 = fifa_rankings.filter(col("year") == 2026).select(
-        col("country").alias("home_country"),
-        col("rank").alias("home_rank"),
+    # 2. Get latest Elo snapshot per country and normalize its country name
+    windowSpec = Window.partitionBy("country").orderBy(desc("snapshot_date"))
+    latest_elo = elo_ratings.withColumn("rn", row_number().over(windowSpec)).filter(col("rn") == 1).drop("rn")
+    latest_elo_norm = latest_elo.withColumn("country_norm", normalize_team(col("country")))
+
+    # 3. Join schedule with Elo for home team
+    home_elo = latest_elo_norm.select(
+        col("country_norm").alias("home_country_elo"),
+        col("rating").alias("rating_home"),
+        col("goals_for").alias("goals_for_home"),
+        col("matches_total").alias("matches_total_home"),
+        col("is_host").alias("home_is_host")
     )
+    
+    # Join schedule with Elo for away team
+    away_elo = latest_elo_norm.select(
+        col("country_norm").alias("away_country_elo"),
+        col("rating").alias("rating_away"),
+        col("goals_for").alias("goals_for_away"),
+        col("matches_total").alias("matches_total_away"),
+        col("is_host").alias("away_is_host")
+    )
+
+    # Join schedule with FIFA ranks for home team
+    fifa_2026_home = fifa_rankings.filter(col("year") == 2026).select(
+        col("country").alias("home_country_fifa"),
+        col("rank").alias("home_rank")
+    )
+
+    # Join schedule with FIFA ranks for away team
     fifa_2026_away = fifa_rankings.filter(col("year") == 2026).select(
-        col("country").alias("away_country"),
-        col("rank").alias("away_rank"),
+        col("country").alias("away_country_fifa"),
+        col("rank").alias("away_rank")
     )
 
-    schedule_with_ranks = (
-        schedule_norm.join(
-            fifa_2026,
-            schedule_norm.home_team_norm == fifa_2026.home_country,
-            "left",
-        )
-        .drop("home_country")
-        .join(
-            fifa_2026_away,
-            schedule_norm.away_team_norm == fifa_2026_away.away_country,
-            "left",
-        )
-        .drop("away_country")
-    )
+    # Perform joins
+    joined = schedule_norm \
+        .join(home_elo, schedule_norm.home_team_norm == home_elo.home_country_elo, "left") \
+        .join(away_elo, schedule_norm.away_team_norm == away_elo.away_country_elo, "left") \
+        .join(fifa_2026_home, schedule_norm.home_team_norm == fifa_2026_home.home_country_fifa, "left") \
+        .join(fifa_2026_away, schedule_norm.away_team_norm == fifa_2026_away.away_country_fifa, "left")
 
-    return schedule_with_ranks.select(
-        col("match_id"),
-        col("home_team"),
-        col("away_team"),
-        col("match_date"),
-        col("home_rank").cast("int"),
-        col("away_rank").cast("int"),
-        when(col("home_rank") < col("away_rank"), col("home_team"))
-        .when(col("away_rank") < col("home_rank"), col("away_team"))
-        .otherwise(lit("Draw"))
-        .alias("predicted_winner"),
-    )
+    # Fill null ratings/stats with defaults
+    joined_filled = joined \
+        .na.fill({"rating_home": 1500.0, "rating_away": 1500.0, 
+                  "goals_for_home": 1.0, "goals_for_away": 1.0, 
+                  "matches_total_home": 1, "matches_total_away": 1,
+                  "home_is_host": 0, "away_is_host": 0})
+
+    # 4. Perform ELO predictions
+    home_adv = when(col("home_is_host") == 1, 100).when(col("away_is_host") == 1, -100).otherwise(0)
+    rating_diff = col("rating_home") + home_adv - col("rating_away")
+    
+    prob_home_base = 1.0 / (1.0 + pow(lit(10.0), -rating_diff / 400.0))
+    prob_draw = lit(0.25) * exp(- pow(rating_diff / 300.0, 2.0))
+    remaining = lit(1.0) - prob_draw
+    prob_home_win = prob_home_base * remaining
+    prob_away_win = (lit(1.0) - prob_home_base) * remaining
+
+    # Expected goals
+    expected_goals_home = (col("goals_for_home") / col("matches_total_home")) * (col("rating_home") / col("rating_away"))
+    expected_goals_away = (col("goals_for_away") / col("matches_total_away")) * (col("rating_away") / col("rating_home"))
+
+    # Predicted Winner
+    predicted_winner = when((prob_home_win > prob_away_win) & (prob_home_win > prob_draw), col("home_team")) \
+                       .when((prob_away_win > prob_home_win) & (prob_away_win > prob_draw), col("away_team")) \
+                       .otherwise(lit("Draw"))
+
+    # Add columns to dataframe
+    predicted_df = joined_filled.withColumn("rating_home", col("rating_home")) \
+        .withColumn("rating_away", col("rating_away")) \
+        .withColumn("prob_home_win", round(prob_home_win, 4)) \
+        .withColumn("prob_away_win", round(prob_away_win, 4)) \
+        .withColumn("prob_draw", round(prob_draw, 4)) \
+        .withColumn("expected_goals_home", round(expected_goals_home, 2)) \
+        .withColumn("expected_goals_away", round(expected_goals_away, 2)) \
+        .withColumn("predicted_winner", predicted_winner)
+
+    return predicted_df
 
 
 def main():
@@ -210,13 +258,31 @@ def main():
         )
 
         logger.info("Calcul des prédictions pour 2026...")
-        predictions = build_predictions_2026(schedule_2026, fifa_rankings)
-        write_table(predictions, jdbc_url, db_properties, "gold.predictions_2026")
+        elo_ratings = spark.read.jdbc(
+            jdbc_url, "bronze.elo_ratings", properties=db_properties
+        )
+        predictions = build_predictions_2026(schedule_2026, fifa_rankings, elo_ratings)
+        
+        # Legacy table predictions_2026 (required by tests)
+        predictions_legacy = predictions.select(
+            "match_id", "home_team", "away_team", "match_date", "home_rank", "away_rank", "predicted_winner"
+        )
+        write_table(predictions_legacy, jdbc_url, db_properties, "gold.predictions_2026")
+        
+        # Rich table tournament_predictions
+        predictions_rich = predictions.select(
+            "match_id", "home_team", "away_team", "match_date", "home_rank", "away_rank",
+            "rating_home", "rating_away", "prob_home_win", "prob_away_win", "prob_draw",
+            "expected_goals_home", "expected_goals_away", "predicted_winner"
+        )
+        write_table(predictions_rich, jdbc_url, db_properties, "gold.tournament_predictions")
+
         logger.info(
-            "Prédictions 2026 calculées",
+            "Prédictions 2026 calculées (avec tables de prédiction standard et enrichie)",
             extra={
                 "context": {
-                    "table": "gold.predictions_2026",
+                    "table_legacy": "gold.predictions_2026",
+                    "table_rich": "gold.tournament_predictions",
                     "total_records": predictions.count(),
                 }
             },
@@ -229,7 +295,7 @@ def main():
                     "total_processing_time_seconds": (
                         datetime.now() - start_time
                     ).total_seconds(),
-                    "tables_processed": 3,
+                    "tables_processed": 4,
                 }
             },
         )
