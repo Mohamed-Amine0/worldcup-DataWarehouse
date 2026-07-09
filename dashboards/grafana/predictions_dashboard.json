@@ -1,0 +1,101 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {"type": "postgres", "uid": "postgres-dw"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "id": 1,
+      "title": "Top 15 équipes favorites de 2026 (Par Rating Elo)",
+      "type": "barchart",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT country, rating FROM bronze.elo_ratings WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM bronze.elo_ratings) ORDER BY rating DESC LIMIT 15",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {"type": "postgres", "uid": "postgres-dw"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "id": 2,
+      "title": "Force Elo Moyenne par Confédération",
+      "type": "barchart",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT confederation, ROUND(AVG(rating)) AS avg_rating FROM bronze.elo_ratings WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM bronze.elo_ratings) GROUP BY confederation ORDER BY avg_rating DESC",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {"type": "postgres", "uid": "postgres-dw"},
+      "gridPos": {"h": 12, "w": 24, "x": 0, "y": 8},
+      "id": 3,
+      "title": "Prédictions de match détaillées (Simulations ELO)",
+      "type": "table",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT home_team, rating_home, away_team, rating_away, ROUND(prob_home_win::numeric * 100, 1) || '%' AS prob_home_win, ROUND(prob_away_win::numeric * 100, 1) || '%' AS prob_away_win, ROUND(prob_draw::numeric * 100, 1) || '%' AS prob_draw, expected_goals_home || ' - ' || expected_goals_away AS expected_score, predicted_winner FROM gold.tournament_predictions ORDER BY match_date",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {"type": "postgres", "uid": "postgres-dw"},
+      "gridPos": {"h": 6, "w": 8, "x": 0, "y": 20},
+      "id": 4,
+      "title": "Nombre de Matchs Simulés",
+      "type": "stat",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) FROM gold.tournament_predictions",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {"type": "postgres", "uid": "postgres-dw"},
+      "gridPos": {"h": 6, "w": 8, "x": 8, "y": 20},
+      "id": 5,
+      "title": "Probabilité Moyenne de Match Nul",
+      "type": "stat",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT ROUND(AVG(prob_draw)::numeric * 100, 1) || '%' FROM gold.tournament_predictions",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {"type": "postgres", "uid": "postgres-dw"},
+      "gridPos": {"h": 6, "w": 8, "x": 16, "y": 20},
+      "id": 6,
+      "title": "Buts Attendus par Match",
+      "type": "stat",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT ROUND(AVG(expected_goals_home + expected_goals_away)::numeric, 2) FROM gold.tournament_predictions",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["gold", "predictions", "elo"],
+  "time": {"from": "now-6h", "to": "now"},
+  "title": "Gold - Prédictions Coupe du Monde 2026",
+  "uid": "predictions-dashboard",
+  "version": 1
+}

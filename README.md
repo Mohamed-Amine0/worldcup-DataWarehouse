@@ -1,55 +1,67 @@
-# DEMO
-
-![alt text](image.png)
-
 # World Cup Data Warehouse
 
-Projet de mise en place d'un Data Warehouse pour analyser les données historiques des Coupes du Monde de la FIFA et le calendrier 2026.
+Data Warehouse ETL en 3 couches (Bronze, Silver, Gold) pour analyser les données historiques des Coupes du Monde FIFA et le calendrier 2026.
 
-## Structure du projet
-- `data/source/` : Fichiers CSV contenant les données brutes (classements FIFA, historique des compétitions, calendrier 2026, détails des matchs de 1930 à 2022).
-- `ingestion/` : Script SQL pour l'initialisation de la base de données brute (schéma public).
-- `transformation/` : Script SQL pour le nettoyage et le typage des données vers la zone intermédiaire (schéma silver).
-- `docker-compose.yml` : Fichier de configuration du service de base de données PostgreSQL.
+## Architecture
 
-## Prérequis
-- Docker
-- Docker Compose
+- **Bronze** : ingestion CSV bruts → PostgreSQL (`bronze`)
+- **Silver** : nettoyage, typage, déduplication via Spark → PostgreSQL (`silver`)
+- **Gold** : KPIs métier via Spark → PostgreSQL (`gold`)
+- **Monitoring** : Prometheus + Grafana + postgres-exporter
+- **API** : FastAPI sur le port 8000
 
-## Ingestion et ETL (Transition vers Python / Spark)
+## Démarrage rapide
 
-Afin de pouvoir traiter des flux complexes et préparer la transition vers **Apache Spark** pour les transformations et l'ETL de données massives, j'ai modifié la méthode d'ingestion. Plutôt que d'utiliser des scripts SQL d'import bruts (`init.sql`), j'utilise désormais un script Python (`csv_to_postgres.py`) s'exécutant dans un conteneur dédié à l'ingestion.
-
-### Architecture d'ingestion
-
-```mermaid
-flowchart LR
-    A[Machine hôte Windows] -->|docker exec| B[Conteneur ingestion]
-    B -->|lit CSV| C["/data/source monté depuis ./data"]
-    B -->|écrit en base| D[Conteneur postgres]
-```
-
-### Lancement avec docker-compose.1worker.yml
-
-Le conteneur `ingestion` exécute réellement le script Python pour charger les fichiers CSV sources vers la base de données PostgreSQL dans le schéma `bronze`.
-
-Pour lancer l'ensemble des services :
 ```bash
-docker compose -f docker-compose.1worker.yml up -d --build
+# Configuration légère (1 worker Spark)
+docker compose -f docker-compose.1worker.yml up -d
+
+# Attendre que PostgreSQL soit prêt, puis lancer le pipeline
+./run_pipeline.sh   # Linux/Mac
+# ou
+.\run_pipeline.ps1  # Windows PowerShell
 ```
 
-Pour exécuter manuellement l'ingestion dans le conteneur `ingestion` (si nécessaire) :
+## Interfaces
+
+| Service    | URL                      | Identifiants    |
+|-----------|--------------------------|-----------------|
+| Grafana   | http://localhost:3000    | admin / admin   |
+| Spark UI  | http://localhost:8080    | -               |
+| Prometheus| http://localhost:9090  | -               |
+| API       | http://localhost:8000/docs | -             |
+| PostgreSQL| localhost:5432           | user / password |
+
+## Tests
+
 ```bash
-docker exec -it worldcup_ingestion python ingestion/csv_to_postgres.py
+pip install -r requirements.txt
+pytest tests/ -v
 ```
 
-## Transformation (Zone Silver)
-Pour nettoyer, filtrer et typer les données brutes :
-```bash
-Get-Content transformation/silver.sql -Raw | docker exec -i worldcup_db psql -U postgres -d worldcup_dw
-```
-Cette étape produit les tables typées suivantes dans le schéma `silver` :
-- `silver.fifa_rankings` (fusion des classements 2022 et 2026)
-- `silver.world_cup_history`
-- `silver.schedule_2026`
-- `silver.matches`
+Les tests d'intégration (`test_integration_db.py`, `test_api.py`) nécessitent Docker en cours d'exécution avec le pipeline ETL exécuté.
+
+## Structure
+
+Voir `sujet.md` pour la documentation complète du projet.
+
+## Prédictions (Amélioration Elo)
+
+La logique de prédiction initiale basée sur les classements FIFA a été remplacée par un modèle basé sur les **ratings Elo historiques (1901-2026)** issus de `eloratings.net` afin d'apporter plus de précision (supérieure à 70% de réussite historique) et de nuance dans les résultats.
+
+### Méthodologie
+1. **Formule de Base** : La probabilité de victoire de l'équipe A est calculée selon l'équation :
+   $$P(A) = \frac{1}{1 + 10^{\frac{Rating_B - Rating_A - H}{400}}}$$
+   où $H$ représente l'avantage à domicile (+100 points Elo attribués si l'équipe joue dans son pays hôte : USA, Canada ou Mexique).
+2. **Probabilité de Match Nul** : Estimée de manière dynamique par :
+   $$P(\text{Nul}) = 0.25 \times e^{-\left(\frac{Rating_diff}{300}\right)^2}$$
+   Le reste de la probabilité est ensuite normalisé et distribué pour obtenir des probabilités de victoire, de défaite et de nul précises.
+3. **Prédiction de Buts (Score attendu)** :
+   $$\text{Expected Goals}_A = \frac{\text{Buts marqués}_A}{\text{Matchs joués}_A} \times \frac{Rating_A}{Rating_B}$$
+
+### Architecture & Tables
+- **Bronze (`bronze.elo_ratings`)** : Ingestion brute de `elo_ratings_wc2026.csv` via le script `scripts/bronze/elo_to_bronze.py`.
+- **Silver (`silver.match_predictions`)** : Vue SQL qui croise toutes les équipes qualifiées pour simuler tous les duels possibles à l'aide de la formule Elo.
+- **Gold (`gold.predictions_2026` & `gold.tournament_predictions`)** : Tables de prédictions finalisées calculées via Spark. La table `tournament_predictions` contient les métriques détaillées (ratings, probabilités et scores attendus).
+- **Grafana** : Un dashboard interactif dédié aux prédictions a été mis en place sous `dashboards/grafana/predictions_dashboard.json`.
+
