@@ -16,10 +16,31 @@ Projet de mise en place d'un Data Warehouse pour analyser les données historiqu
 - Docker
 - Docker Compose
 
-## Lancement et Ingestion des données
-Pour démarrer la base de données et importer automatiquement les données sources :
+## Ingestion et ETL (Transition vers Python / Spark)
+
+Afin de pouvoir traiter des flux complexes et préparer la transition vers **Apache Spark** pour les transformations et l'ETL de données massives, j'ai modifié la méthode d'ingestion. Plutôt que d'utiliser des scripts SQL d'import bruts (`init.sql`), j'utilise désormais un script Python (`csv_to_postgres.py`) s'exécutant dans un conteneur dédié à l'ingestion.
+
+### Architecture d'ingestion
+
+```mermaid
+flowchart LR
+    A[Machine hôte Windows] -->|docker exec| B[Conteneur ingestion]
+    B -->|lit CSV| C["/data/source monté depuis ./data"]
+    B -->|écrit en base| D[Conteneur postgres]
+```
+
+### Lancement avec docker-compose.1worker.yml
+
+Le conteneur `ingestion` exécute réellement le script Python pour charger les fichiers CSV sources vers la base de données PostgreSQL dans le schéma `bronze`.
+
+Pour lancer l'ensemble des services :
 ```bash
-docker compose up -d
+docker compose -f docker-compose.1worker.yml up -d --build
+```
+
+Pour exécuter manuellement l'ingestion dans le conteneur `ingestion` (si nécessaire) :
+```bash
+docker exec -it worldcup_ingestion python ingestion/csv_to_postgres.py
 ```
 
 ## Transformation (Zone Silver)
