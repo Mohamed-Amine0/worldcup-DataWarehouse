@@ -1,0 +1,87 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {"type": "postgres", "uid": "postgres-dw"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "id": 1,
+      "title": "Top 10 équipes par victoires",
+      "type": "barchart",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT team, SUM(wins) AS total_wins FROM gold.team_performance GROUP BY team ORDER BY total_wins DESC LIMIT 10",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {"type": "postgres", "uid": "postgres-dw"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "id": 2,
+      "title": "Buts totaux par Coupe du Monde",
+      "type": "timeseries",
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT TO_TIMESTAMP(year::text, 'YYYY') AS time, total_goals AS value FROM gold.tournament_stats ORDER BY year",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {"type": "postgres", "uid": "postgres-dw"},
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 8},
+      "id": 3,
+      "title": "Prédictions Coupe du Monde 2026",
+      "type": "table",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT match_id, home_team, away_team, match_date, home_rank, away_rank, predicted_winner FROM gold.predictions_2026 ORDER BY match_date LIMIT 50",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {"type": "postgres", "uid": "postgres-dw"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 18},
+      "id": 4,
+      "title": "Taille des tables Gold",
+      "type": "table",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT table_name, pg_size_pretty(pg_total_relation_size('gold.' || table_name)) AS size FROM information_schema.tables WHERE table_schema = 'gold' AND table_type = 'BASE TABLE' ORDER BY pg_total_relation_size('gold.' || table_name) DESC",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus-dw"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 18},
+      "id": 5,
+      "title": "Transactions PostgreSQL / s",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rate(pg_stat_database_xact_commit{datname=\"world_cup_dw\"}[5m])",
+          "legendFormat": "commits/s",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["gold", "world-cup"],
+  "time": {"from": "now-6h", "to": "now"},
+  "title": "Gold - KPIs Coupe du Monde",
+  "uid": "gold-dashboard",
+  "version": 1
+}

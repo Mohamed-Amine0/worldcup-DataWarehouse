@@ -1,0 +1,88 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {"type": "postgres", "uid": "postgres-dw"},
+      "fieldConfig": {"defaults": {"unit": "short"}},
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "id": 1,
+      "title": "Nombre de tables Bronze",
+      "type": "stat",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS value FROM information_schema.tables WHERE table_schema = 'bronze' AND table_type = 'BASE TABLE' AND table_name != 'metadata'",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {"type": "postgres", "uid": "postgres-dw"},
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "id": 2,
+      "title": "Total records Bronze",
+      "type": "stat",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT COALESCE(SUM(row_count), 0) AS value FROM bronze.metadata",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {"type": "postgres", "uid": "postgres-dw"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "id": 3,
+      "title": "Records par table Bronze",
+      "type": "barchart",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT table_name, row_count FROM bronze.metadata ORDER BY row_count DESC",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {"type": "postgres", "uid": "postgres-dw"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "id": 4,
+      "title": "Taille des tables Bronze",
+      "type": "table",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT table_name, pg_size_pretty(pg_total_relation_size('bronze.' || table_name)) AS size FROM information_schema.tables WHERE table_schema = 'bronze' AND table_type = 'BASE TABLE' AND table_name != 'metadata' ORDER BY pg_total_relation_size('bronze.' || table_name) DESC",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {"type": "postgres", "uid": "postgres-dw"},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12},
+      "id": 5,
+      "title": "Métadonnées d'ingestion",
+      "type": "table",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT table_name, source_file, ingestion_timestamp, row_count, schema_version FROM bronze.metadata ORDER BY ingestion_timestamp DESC",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["bronze", "world-cup"],
+  "time": {"from": "now-6h", "to": "now"},
+  "title": "Bronze - Ingestion Data Warehouse",
+  "uid": "bronze-dashboard",
+  "version": 1
+}

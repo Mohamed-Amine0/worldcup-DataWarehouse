@@ -1,0 +1,87 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {"type": "postgres", "uid": "postgres-dw"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "id": 1,
+      "title": "Records par table Silver",
+      "type": "barchart",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT table_name, total_records FROM silver.quality_metrics ORDER BY total_records DESC",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {"type": "postgres", "uid": "postgres-dw"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "id": 2,
+      "title": "Doublons supprimés",
+      "type": "barchart",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT table_name, duplicate_count FROM silver.quality_metrics ORDER BY duplicate_count DESC",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {"type": "postgres", "uid": "postgres-dw"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "id": 3,
+      "title": "Temps de traitement (s)",
+      "type": "barchart",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT table_name, processing_time_seconds FROM silver.quality_metrics ORDER BY processing_time_seconds DESC",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {"type": "postgres", "uid": "postgres-dw"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "id": 4,
+      "title": "Nulls par table",
+      "type": "barchart",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT table_name, null_count FROM silver.quality_metrics ORDER BY null_count DESC",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {"type": "postgres", "uid": "postgres-dw"},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+      "id": 5,
+      "title": "Métriques de qualité complètes",
+      "type": "table",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT * FROM silver.quality_metrics ORDER BY table_name",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["silver", "world-cup"],
+  "time": {"from": "now-6h", "to": "now"},
+  "title": "Silver - Qualité des Données",
+  "uid": "silver-dashboard",
+  "version": 1
+}
